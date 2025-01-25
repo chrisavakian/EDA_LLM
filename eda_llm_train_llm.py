@@ -7,46 +7,66 @@ Original file is located at
     https://colab.research.google.com/drive/1hwU0Gd7neNM3YonjCvQCrcgaG2XJmory
 """
 
+!pip install datasets
+
 import json
-from datasets import Dataset
 from transformers import LlamaForCausalLM, LlamaTokenizer, Trainer, TrainingArguments
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import Dataset
 
-model_name = "llama-7b"
-tokenizer = LlamaTokenizer.from_pretrained(model_name)
-model = LlamaForCausalLM.from_pretrained(model_name)
+model_name = "OuteAI/OuteTTS-0.3-500M"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
 
-tokenizer.save_pretrained("./llama-7b")
-model.save_pretrained("./llama-7b")
-
-with open("training_data.json", "r") as f:
+# Load the dataset
+with open("labeled_cpp_dataset.json", "r") as f:  # Replace "your_dataset.json"
     data = json.load(f)
 
-dataset = Dataset.from_dict({"label": [item["label"] for item in data], "data": [item["data"] for item in data]})
+dataset = Dataset.from_list(data)
 
-def tokenize_function(examples):
-    return tokenizer(examples["data"], padding="max_length", truncation=True)
+def preprocess_function(examples):
+    inputs = []
+    for i in range(len(examples['label'])):
+        inputs.append(f"<label>{examples['label'][i]}</label><data>{examples['data'][i]}</data>")
+    model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
+    model_inputs["labels"] = model_inputs["input_ids"].copy()  # Set labels to the input IDs
+    return model_inputs
 
-tokenized_datasets = dataset.map(tokenize_function, batched=True)
+tokenized_dataset = dataset.map(
+    preprocess_function,
+    batched=True,
+    num_proc=1,  # Adjust based on your resources
+    remove_columns=dataset.column_names,
+    desc="Running tokenizer on dataset",
+)
+
 
 training_args = TrainingArguments(
-    output_dir="./llama-7b-finetuned",
-    evaluation_strategy="epoch",
-    learning_rate=2e-5,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
-    num_train_epochs=3,
+    output_dir="./results",
+    num_train_epochs=1,
+    per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
+    gradient_accumulation_steps=1,
+    warmup_steps=500,
     weight_decay=0.01,
-    save_total_limit=2,
+    logging_dir="./logs",
+    logging_steps=10,
+    evaluation_strategy="no",
+    save_strategy="epoch",
+    save_total_limit=0,
+    load_best_model_at_end=False,
+    push_to_hub=False,
+    report_to="none"
 )
 
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=tokenized_datasets,
-    eval_dataset=tokenized_datasets,
+    train_dataset=tokenized_dataset,
 )
 
 trainer.train()
 
-trainer.save_model("./llama-7b-finetuned")
-tokenizer.save_pretrained("./llama-7b-finetuned")
+# Save the model and tokenizer
+model.save_pretrained("./trained_model") # Choose a directory for your trained model
+tokenizer.save_pretrained("./trained_model")

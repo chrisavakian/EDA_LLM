@@ -31,10 +31,11 @@ import time
 import torch
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import networkx as nx
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-model_path = "./llama-7b-finetuned"
-tokenizer = LlamaTokenizer.from_pretrained(model_path)
-model = LlamaForCausalLM.from_pretrained(model_path)
+model_name = "meta-llama/Llama-3.2-1B" #Using a small model right now just to keep everything quick.
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
 
 all_graphs = {}
 all_src_codes = {}
